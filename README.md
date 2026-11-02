@@ -11,6 +11,8 @@ The commands use `kubectl`. On OpenShift, `oc` accepts the same commands.
 
 The commands are written for a Bash shell on Linux or macOS. On Windows, use Git Bash or WSL, not PowerShell. In Git Bash, run `export MSYS_NO_PATHCONV=1` first. Otherwise Git Bash rewrites container paths such as `/config` to Windows paths and the `exec` commands fail.
 
+> **Disclaimer:** These manifests are a sample, provided as-is and without warranty or support. They are not part of the Software AG product suite and are not covered by Software AG support or maintenance. There is no guarantee that they work in your environment. Review, adapt and test them before use. You run them at your own responsibility. See [License](#license).
+
 ---
 
 ## Contents
@@ -22,6 +24,7 @@ The commands are written for a Bash shell on Linux or macOS. On Windows, use Git
 | `02-deployment.yaml` | The CONNX JDBC server | **Required: set `image`.** Non-OpenShift: uncomment `runAsUser` |
 | `03-service.yaml` | Service on port 7502 | Optional: change `type` for external clients |
 | `.gitignore` | Keeps `connxreg64.db` and image archives out of Git | None |
+| `LICENSE` | Apache License 2.0, for the manifests and documentation in this repository | None |
 
 The registry ConfigMap `connx-jdbc-registry` is not a file in this folder. You create it from your `connxreg64.db` (step 2).
 
@@ -337,7 +340,7 @@ kubectl delete -f 02-deployment.yaml -f 03-service.yaml
 | A registry change has no effect | The pods were not restarted | `kubectl rollout restart deploy/connx-jdbc -n connx` |
 | External clients cannot connect | Service is `ClusterIP` (in-cluster only), or a firewall blocks the port | See [Connecting clients](#connecting-clients) |
 
-When you contact Software AG support, include the output of:
+To diagnose other problems, collect the output of:
 
 ```bash
 kubectl get all,configmap -n connx
@@ -345,3 +348,11 @@ kubectl get events -n connx --sort-by=.lastTimestamp
 kubectl describe pod -n connx -l app=connx-jdbc
 kubectl logs deploy/connx-jdbc -n connx
 ```
+
+---
+
+## License
+
+The manifests and documentation in this repository are licensed under the [Apache License 2.0](LICENSE). They are provided "AS IS", without warranties or conditions of any kind, and without any obligation to provide support. See the license for details.
+
+The license covers this repository only. The CONNX JDBC server, its container image and its use are governed by your Software AG license agreement for CONNX. They are not covered by this license.
