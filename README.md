@@ -36,10 +36,7 @@ The files are numbered so that `kubectl apply -f .` creates them in the correct 
 
 - Kubernetes 1.25 or later, or Red Hat OpenShift Container Platform 4.12 or later.
 - `kubectl` (or `oc` on OpenShift), logged in to the cluster with a user who can create namespaces.
-- Podman (or Docker) to load and push the image.
-- The CONNX JDBC server container image supplied by Software AG (for example `connx-jdbc.tar.gz`).
-- A container registry the cluster can pull from: the OpenShift internal registry, or your enterprise registry (Quay, Artifactory, Harbor, Nexus, ACR, ECR, Artifact Registry and similar).
-- A CONNX registry file (`connxreg64.db`). Step 2 shows how to start from the default one in the image.
+- The CONNX JDBC server container image, in a container registry the cluster can pull from. Building and pushing the image is described separately.
 - A valid CONNX license entitlement.
 
 No persistent storage is needed.
@@ -60,18 +57,18 @@ The manifests default to OpenShift. On any other Kubernetes platform, make these
 
 The image user `sagadmin` is not numeric, so without this the pods fail with `CreateContainerConfigError: image has non-numeric user (sagadmin), cannot verify user is non-root`. With it, the pods also meet the Pod Security Standards `restricted` profile. Do **not** set it on OpenShift, which assigns its own UID and rejects a fixed one.
 
-**2. Push the image to your cloud registry** (step 1, option B) and give the cluster pull access:
+**2. Give the cluster pull access to the image registry:**
 
 | Platform | Registry | Pull access |
 | --- | --- | --- |
 | AKS | Azure Container Registry | `az aks update -n <CLUSTER> -g <RESOURCE_GROUP> --attach-acr <ACR_NAME>` |
 | EKS | Amazon ECR | The node IAM role needs `AmazonEC2ContainerRegistryReadOnly` (managed node groups have it by default) |
 | GKE | Artifact Registry | The node service account needs `roles/artifactregistry.reader` |
-| Other | Any | A pull secret (step 1, option B) |
+| Other | Any | A pull secret (see [Step 1](#step-1-set-the-image)) |
 
 With this access in place, leave `imagePullSecrets` commented out.
 
-**3. Use `kubectl`.** Skip step 1, option A (OpenShift internal registry) and the `restricted-v2` check in step 5. The `openshift.io/*` annotations in `00-namespace.yaml` are ignored on other platforms. You don't need to remove them.
+**3. Skip the OpenShift-only items:** the internal registry address in step 1 and the `restricted-v2` check in step 5. The `openshift.io/*` annotations in `00-namespace.yaml` are ignored on other platforms. You don't need to remove them.
 
 **4. External access (optional).** `type: LoadBalancer` in `03-service.yaml` creates a public load balancer. For a load balancer reachable only from your private network, add the annotation for your platform under `metadata.annotations`:
 
@@ -83,56 +80,31 @@ With this access in place, leave `imagePullSecrets` commented out.
 
 ---
 
-## Step 1: Make the image available to the cluster
+## Step 1: Set the image
 
-Load the image archive on a workstation that has Podman (or Docker), tag it for your registry, and push it.
-
-```bash
-# 1. Load the archive. Note the image name it prints ("Loaded image: ...").
-podman load -i connx-jdbc.tar.gz
-
-# 2. Tag it for your registry. Replace the placeholders.
-podman tag <LOADED_IMAGE_NAME> <REGISTRY>/<REPOSITORY>/connx-jdbc:<TAG>
-
-# 3. Log in and push.
-podman login <REGISTRY>
-podman push <REGISTRY>/<REPOSITORY>/connx-jdbc:<TAG>
-```
-
-Use the CONNX version as the tag, for example `14.9.25364`. Avoid `latest`, so that you always know which version is running and can roll back.
-
-### Option A: OpenShift internal registry
-
-The internal registry must be exposed through its default route. Ask your cluster administrator if it is not (`defaultRoute: true` in the `configs.imageregistry.operator.openshift.io/cluster` resource). The registry authenticates with your OpenShift token.
-
-```bash
-oc apply -f 00-namespace.yaml                   # The image is stored in the connx project
-REGISTRY=$(oc get route default-route -n openshift-image-registry -o jsonpath='{.spec.host}')
-podman login -u "$(oc whoami)" -p "$(oc whoami -t)" "$REGISTRY"
-podman tag <LOADED_IMAGE_NAME> "$REGISTRY/connx/connx-jdbc:<TAG>"
-podman push "$REGISTRY/connx/connx-jdbc:<TAG>"
-oc get imagestream connx-jdbc -n connx          # The push creates this image stream
-```
-
-Add `--tls-verify=false` to `login` and `push` only if the route uses a certificate your workstation does not trust.
-
-In `02-deployment.yaml`, use the **in-cluster** registry address, not the route:
+In `02-deployment.yaml`, replace the placeholder with the full reference of your CONNX JDBC server image:
 
 ```yaml
-image: image-registry.openshift-image-registry.svc:5000/connx/connx-jdbc:<TAG>
+        image: <REGISTRY>/<REPOSITORY>/connx-jdbc:<TAG>
+```
+
+For example:
+
+```yaml
+        image: registry.example.com/softwareag/connx-jdbc:14.9.25364
+```
+
+If you skip this, the pods fail with `InvalidImageName`. Use a version tag, not `latest`, so that you always know which version is running and can roll back.
+
+**OpenShift internal registry.** If the image is in the internal registry, in the `connx` project, use the **in-cluster** address, not the external route:
+
+```yaml
+        image: image-registry.openshift-image-registry.svc:5000/connx/connx-jdbc:<TAG>
 ```
 
 Pods in the `connx` project can pull from it without a pull secret.
 
-### Option B: Enterprise registry
-
-In `02-deployment.yaml`, use the same reference you pushed:
-
-```yaml
-image: registry.example.com/softwareag/connx-jdbc:<TAG>
-```
-
-If the registry needs credentials, create a pull secret and uncomment `imagePullSecrets` in `02-deployment.yaml`:
+**Registry credentials.** If the registry needs credentials, create a pull secret and uncomment `imagePullSecrets` in `02-deployment.yaml`:
 
 ```bash
 kubectl apply -f 00-namespace.yaml
@@ -142,7 +114,7 @@ kubectl create secret docker-registry connx-registry-pull -n connx \
   --docker-password=<PASSWORD_OR_TOKEN>
 ```
 
-On OpenShift, if the registry is already in the cluster-wide pull secret (`pull-secret` in `openshift-config`), you do not need a project pull secret.
+On OpenShift, if the registry is already in the cluster-wide pull secret (`pull-secret` in `openshift-config`), you do not need a project pull secret. On AKS, EKS and GKE, see [pull access](#running-on-aks-eks-gke-and-other-kubernetes).
 
 ---
 
@@ -150,18 +122,22 @@ On OpenShift, if the registry is already in the cluster-wide pull secret (`pull-
 
 The server reads its registry from the ConfigMap `connx-jdbc-registry`. The pods mount it read-only and never change it.
 
-If you do not have a registry file yet, copy the default one out of the image:
+If you do not have a registry file yet, copy the default one out of the image with a temporary pod. Use the same image as in step 1:
 
 ```bash
-podman create --name connx-registry <REGISTRY>/<REPOSITORY>/connx-jdbc:<TAG>
-podman cp connx-registry:/opt/softwareag/connx/connxreg64.db ./connxreg64.db
-podman rm connx-registry
+kubectl apply -f 00-namespace.yaml
+kubectl run connx-registry-copy -n connx --image=<REGISTRY>/<REPOSITORY>/connx-jdbc:<TAG> \
+  --restart=Never --command -- sleep 600
+kubectl wait pod/connx-registry-copy -n connx --for=condition=Ready --timeout=120s
+kubectl exec connx-registry-copy -n connx -- cat /opt/softwareag/connx/connxreg64.db > connxreg64.db
+kubectl delete pod connx-registry-copy -n connx
 ```
+
+`kubectl run` may print a `PodSecurity "restricted"` warning. The warning is harmless for this short-lived pod. If you use a pull secret, the temporary pod also needs it: add `--overrides='{"spec":{"imagePullSecrets":[{"name":"connx-registry-pull"}]}}'`.
 
 Create the ConfigMap from the file:
 
 ```bash
-kubectl apply -f 00-namespace.yaml
 kubectl create configmap connx-jdbc-registry -n connx --from-file=connxreg64.db --save-config
 ```
 
@@ -175,7 +151,7 @@ Keep `connxreg64.db` in your configuration store. That file, not the cluster, is
 
 Go through this checklist before deploying.
 
-1. **Image (required).** In `02-deployment.yaml`, replace `<REGISTRY>/<REPOSITORY>/connx-jdbc:<TAG>` with the image from step 1. If you skip this, the pods fail with `InvalidImageName`.
+1. **Image (required).** Set in step 1.
 2. **Platform.** On OpenShift, no change is needed. On AKS, EKS, GKE or other Kubernetes, uncomment `runAsUser: 1724` in `02-deployment.yaml`. See [Running on AKS, EKS, GKE and other Kubernetes](#running-on-aks-eks-gke-and-other-kubernetes).
 3. **License.** `01-configmap.yaml` sets `ACCEPT_EULA: "Y"`. This value confirms that you accept the Software AG license terms for your CONNX entitlement. Without it the server does not start.
 4. **Replicas (optional).** `02-deployment.yaml` runs 2 replicas. Change `replicas` as needed.
@@ -296,7 +272,7 @@ To keep the change, also set `replicas` in `02-deployment.yaml`. Otherwise the n
 
 ## Upgrading
 
-1. Push the new image (step 1) with the new version tag.
+1. Make the new image version available in your registry.
 2. Update `image:` in `02-deployment.yaml`.
 3. Apply and watch the rollout:
 
@@ -331,8 +307,8 @@ kubectl delete -f 02-deployment.yaml -f 03-service.yaml
 
 | Symptom | Cause | Fix |
 | --- | --- | --- |
-| Pod status `InvalidImageName` | Image placeholder not replaced | Set `image:` in `02-deployment.yaml` (step 3) |
-| Pod status `ImagePullBackOff` / `ErrImagePull` | Wrong image reference, or the registry needs credentials | Check the reference with `kubectl describe pod -n connx -l app=connx-jdbc`. For the OpenShift internal registry, use the `image-registry.openshift-image-registry.svc:5000` address, not the route. Otherwise create a pull secret (step 1, option B). |
+| Pod status `InvalidImageName` | Image placeholder not replaced | Set `image:` in `02-deployment.yaml` (step 1) |
+| Pod status `ImagePullBackOff` / `ErrImagePull` | Wrong image reference, or the registry needs credentials | Check the reference with `kubectl describe pod -n connx -l app=connx-jdbc`. For the OpenShift internal registry, use the `image-registry.openshift-image-registry.svc:5000` address, not the route. Otherwise create a pull secret (step 1). |
 | Pod stays `ContainerCreating`, event `configmap "connx-jdbc-registry" not found` | The registry ConfigMap was not created | Create it (step 2) |
 | Pod status `CreateContainerConfigError`: `image has non-numeric user (sagadmin), cannot verify user is non-root` | Non-OpenShift Kubernetes with `runAsUser` commented out | Uncomment `runAsUser: 1724` in `02-deployment.yaml` (see [Running on AKS, EKS, GKE and other Kubernetes](#running-on-aks-eks-gke-and-other-kubernetes)) |
 | OpenShift: `pods "connx-jdbc-..." is forbidden: unable to validate against any security context constraint` | `runAsUser` (or `fsGroup`) is set to a fixed value outside the project range | Comment out `runAsUser` in `02-deployment.yaml`. OpenShift assigns the UID. |

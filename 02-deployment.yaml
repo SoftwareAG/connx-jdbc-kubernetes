@@ -52,13 +52,13 @@ spec:
         seccompProfile:
           type: RuntimeDefault
       # Uncomment if your registry needs credentials. Not needed for the
-      # OpenShift internal registry. See README.md, step 1, option B.
+      # OpenShift internal registry. See README.md, step 1.
       # imagePullSecrets:
       # - name: connx-registry-pull
       containers:
       - name: connx-jdbc
         # ------------------------------------------------------------------
-        # ACTION REQUIRED: replace with the image you pushed in README.md, step 1.
+        # ACTION REQUIRED: replace with your CONNX JDBC server image (README.md, step 1).
         # Examples:
         #   image-registry.openshift-image-registry.svc:5000/connx/connx-jdbc:14.9.25364
         #   registry.example.com/softwareag/connx-jdbc:14.9.25364
