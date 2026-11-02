@@ -1,7 +1,11 @@
-# CONNX registry and backups. Can contain connection details; keep them
-# in your configuration store, not in this repository.
+# /config files (CONNX registry, CDD files) and local copies. They can
+# contain connection details; keep them in your configuration store, not
+# in this repository.
+config/
+config-from-cluster/
 connxreg64.db
 connxreg64.db.*
+*.cdd
 
 # Image archives supplied by Software AG
 *.tar

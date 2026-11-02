@@ -145,19 +145,19 @@ Follow README.md. Note these differences from the Docker test above:
 
 - Registry and CDD files: on Kubernetes, /config is not a host
   directory. It is the "connx-jdbc-registry" ConfigMap, mounted
-  read-only (README.md, step 2). Put the registry and every CDD file
-  the server needs into that ConfigMap, for example:
+  read-only (README.md, step 2). Copy the contents of your host config
+  directory (registry and CDD files) into a local "config/" directory
+  and create the ConfigMap from it. Every file in the directory becomes
+  a file in /config:
 
-    kubectl create configmap connx-jdbc-registry -n connx --save-config \
-      --from-file=connxreg64.db \
-      --from-file=<CDD_FILE_1> --from-file=<CDD_FILE_2>
+    kubectl create configmap connx-jdbc-registry -n connx --from-file=config/ \
+      --dry-run=client -o yaml | kubectl apply --server-side --force-conflicts -f -
 
-  The total size of a ConfigMap is limited to 1 MiB.
+  The total size is limited to 1 MiB. Subdirectories are ignored.
 
 - File names are case-sensitive on Linux. The registry file name must
   match CONNXREGISTRY64 in 01-configmap.yaml (/config/connxreg64.db).
-  If your file is named CONNXREG64.db, rename it, or create the
-  ConfigMap with --from-file=connxreg64.db=CONNXREG64.db.
+  If your file is named CONNXREG64.db, rename it to connxreg64.db.
 
 - Ownership: the chown to 1724 in step 4 is not needed. ConfigMap files
   are readable by any user, so the pods can read them on OpenShift

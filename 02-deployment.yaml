@@ -3,11 +3,12 @@
 #
 # Runs the CONNX JDBC server (cnxjdbc64), listening on TCP 7502.
 #
-# Registry
-#   The CONNX registry (connxreg64.db) comes from the ConfigMap
-#   "connx-jdbc-registry" and is mounted read-only at /config. The pods
-#   never write to it. To change the registry, replace the ConfigMap and
-#   restart the pods (see README.md, "Updating the registry").
+# Registry and CDD files
+#   All files in /config (the CONNX registry connxreg64.db and your CDD
+#   files) come from the ConfigMap "connx-jdbc-registry", mounted
+#   read-only. The pods never write to them. To change the files,
+#   replace the ConfigMap and restart the pods (see README.md,
+#   "Updating the registry and CDD files").
 #
 # Scaling
 #   The pods hold no state, so any number of replicas can run. Updates
