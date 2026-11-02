@@ -1,0 +1,164 @@
+======================================================================
+Building the CONNX JDBC Server Container Image
+CONNX Data Integration Suite 15.0.0 - Linux
+Build, test and push to a private registry
+======================================================================
+
+Source: Software AG documentation, "Creating Docker Images for CONNX
+Components on Linux" (CONNX 15.0.0). Steps 5 and 6 are a standard
+container workflow and are not part of the Software AG documentation.
+
+The commands use Docker. Podman accepts the same commands (replace
+"docker" with "podman").
+
+These instructions are provided as-is, without warranty or support.
+See README.md, "Disclaimer".
+
+
+----------------------------------------------------------------------
+1. Get the CONNX client and Docker files onto the Linux host
+----------------------------------------------------------------------
+
+1. On Windows, download and run the CONNX Client InstallShield wizard
+   and select the "Docker" check box.
+
+2. Choose the transfer method:
+   - FTP/SFTP/SCP: enter the host, user, password and, optionally, a
+     target directory. By default the files go to your home directory.
+   - Manual Copy Installation: the files are written to
+     <CONNX install dir>\UNIXCLIENT\TEMPINST. Copy them to the Linux
+     host yourself.
+
+3. On the Linux host, go to that directory and run the installer:
+
+     ./installclient
+
+   If anything fails, check the install log. If the network transfer
+   failed, use Manual Copy Installation instead.
+
+
+----------------------------------------------------------------------
+2. Customize Dockerfile.jdbcserver
+----------------------------------------------------------------------
+
+In the directory where you ran installclient, edit
+Dockerfile.jdbcserver to add your configuration settings and DSN
+entries. The DSN commands are described in the Software AG
+documentation, "Completing CONNX Installation for UNIX JDBC Servers".
+
+The CDD files are not built into the image. They are kept outside the
+image and mounted into the container at /config at run time, together
+with the CONNX registry.
+
+
+----------------------------------------------------------------------
+3. Build the image
+----------------------------------------------------------------------
+
+  export CNX_VER=150      # CONNX version without dots (15.0.0 -> 150)
+  docker build -t connx${CNX_VER}jdbcserver . -f ./Dockerfile.jdbcserver
+
+
+----------------------------------------------------------------------
+4. Test the image locally
+----------------------------------------------------------------------
+
+The host config directory must contain the CONNX registry and your CDD
+files, and must be owned by sagadmin (UID/GID 1724):
+
+  sudo chown -R 1724:1724 /home/cnxuser/config
+
+  docker run -d -e "ACCEPT_EULA=Y" --name cnxclient \
+    -v /home/cnxuser/config:/config:z \
+    -p 7502:7502 connx${CNX_VER}jdbcserver
+
+  docker logs cnxclient       # Ends with "Server starting to Wait on new Connections."
+  docker ps -a
+
+The JDBC server listens on port 7502 inside the container. JDBC clients
+connect to the mapped host port.
+
+Stop and remove the test container when you are done:
+
+  docker rm -f cnxclient
+
+
+----------------------------------------------------------------------
+5. Push to a private registry
+----------------------------------------------------------------------
+
+Use the CONNX version as the tag. Avoid "latest", so that you always
+know which version is running and can roll back.
+
+Option A: Enterprise registry (Quay, Artifactory, Harbor, Nexus, ACR,
+ECR, Artifact Registry and similar)
+
+  REGISTRY=registry.mycompany.com/connx     # Your registry host/project
+  TAG=15.0.0
+
+  docker login registry.mycompany.com
+  docker tag connx${CNX_VER}jdbcserver ${REGISTRY}/connx-jdbc:${TAG}
+  docker push ${REGISTRY}/connx-jdbc:${TAG}
+
+Option B: OpenShift internal registry
+
+  The internal registry must be exposed through its default route.
+  Ask your cluster administrator if it is not ("defaultRoute: true" in
+  the configs.imageregistry.operator.openshift.io/cluster resource).
+  The image is stored in the "connx" project, so create it first.
+
+  oc login --token=<TOKEN> --server=https://api.<CLUSTER_DOMAIN>:6443
+  oc apply -f 00-namespace.yaml               # From the manifests folder
+  REGISTRY=$(oc get route default-route -n openshift-image-registry -o jsonpath='{.spec.host}')
+  TAG=15.0.0
+
+  docker login -u "$(oc whoami)" -p "$(oc whoami -t)" "$REGISTRY"
+  docker tag connx${CNX_VER}jdbcserver ${REGISTRY}/connx/connx-jdbc:${TAG}
+  docker push ${REGISTRY}/connx/connx-jdbc:${TAG}
+
+  If the route uses a certificate your host does not trust, add the
+  registry to Docker's insecure registries, or with Podman add
+  --tls-verify=false to "login" and "push".
+
+  In 02-deployment.yaml, use the in-cluster address, not the route:
+    image-registry.openshift-image-registry.svc:5000/connx/connx-jdbc:<TAG>
+
+
+----------------------------------------------------------------------
+6. Pull and run on another host (optional)
+----------------------------------------------------------------------
+
+  docker pull ${REGISTRY}/connx-jdbc:${TAG}
+  docker run -d -e "ACCEPT_EULA=Y" --name cnxclient \
+    -v /path/to/config:/config:z -p 20002:7502 \
+    ${REGISTRY}/connx-jdbc:${TAG}
+
+
+----------------------------------------------------------------------
+7. Next: deploy on Kubernetes or OpenShift
+----------------------------------------------------------------------
+
+Follow README.md. Note these differences from the Docker test above:
+
+- Image: set the image you pushed in step 5 in 02-deployment.yaml
+  (README.md, step 1).
+
+- Registry and CDD files: on Kubernetes, /config is not a host
+  directory. It is the "connx-jdbc-registry" ConfigMap, mounted
+  read-only (README.md, step 2). Put the registry and every CDD file
+  the server needs into that ConfigMap, for example:
+
+    kubectl create configmap connx-jdbc-registry -n connx --save-config \
+      --from-file=connxreg64.db \
+      --from-file=<CDD_FILE_1> --from-file=<CDD_FILE_2>
+
+  The total size of a ConfigMap is limited to 1 MiB.
+
+- File names are case-sensitive on Linux. The registry file name must
+  match CONNXREGISTRY64 in 01-configmap.yaml (/config/connxreg64.db).
+  If your file is named CONNXREG64.db, rename it, or create the
+  ConfigMap with --from-file=connxreg64.db=CONNXREG64.db.
+
+- Ownership: the chown to 1724 in step 4 is not needed. ConfigMap files
+  are readable by any user, so the pods can read them on OpenShift
+  (random UID) and on other Kubernetes platforms (UID 1724).

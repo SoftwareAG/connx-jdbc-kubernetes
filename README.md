@@ -23,6 +23,7 @@ The commands are written for a Bash shell on Linux or macOS. On Windows, use Git
 | `01-configmap.yaml` | License acceptance and registry path | Review `ACCEPT_EULA` |
 | `02-deployment.yaml` | The CONNX JDBC server | **Required: set `image`.** Non-OpenShift: uncomment `runAsUser` |
 | `03-service.yaml` | Service on port 7502 | Optional: change `type` for external clients |
+| `BUILD-IMAGE.txt` | How to build the image from the CONNX Linux setup and push it to a registry | Follow before step 1 |
 | `.gitignore` | Keeps `connxreg64.db` and image archives out of Git | None |
 | `LICENSE` | Apache License 2.0, for the manifests and documentation in this repository | None |
 
@@ -36,7 +37,7 @@ The files are numbered so that `kubectl apply -f .` creates them in the correct 
 
 - Kubernetes 1.25 or later, or Red Hat OpenShift Container Platform 4.12 or later.
 - `kubectl` (or `oc` on OpenShift), logged in to the cluster with a user who can create namespaces.
-- The CONNX JDBC server container image, in a container registry the cluster can pull from. Building and pushing the image is described separately.
+- The CONNX JDBC server container image, in a container registry the cluster can pull from. To build and push it, see [BUILD-IMAGE.txt](BUILD-IMAGE.txt).
 - A valid CONNX license entitlement.
 
 No persistent storage is needed.
@@ -82,7 +83,7 @@ With this access in place, leave `imagePullSecrets` commented out.
 
 ## Step 1: Set the image
 
-In `02-deployment.yaml`, replace the placeholder with the full reference of your CONNX JDBC server image:
+In `02-deployment.yaml`, replace the placeholder with the full reference of your CONNX JDBC server image (see [BUILD-IMAGE.txt](BUILD-IMAGE.txt) to build and push it):
 
 ```yaml
         image: <REGISTRY>/<REPOSITORY>/connx-jdbc:<TAG>
@@ -142,6 +143,8 @@ kubectl create configmap connx-jdbc-registry -n connx --from-file=connxreg64.db 
 ```
 
 `--save-config` lets you update the ConfigMap later with `kubectl apply` (see [Updating the registry](#updating-the-registry)). The registry is a binary file of a few KB. A ConfigMap holds up to 1 MiB.
+
+If your data sources use CDD files, add them to the same ConfigMap with one more `--from-file=<CDD_FILE>` per file. The ConfigMap is mounted at `/config` in place of a host directory, so the server finds only the files in it. File names are case-sensitive and the registry must be named `connxreg64.db`. If yours is `CONNXREG64.db`, use `--from-file=connxreg64.db=CONNXREG64.db`.
 
 Keep `connxreg64.db` in your configuration store. That file, not the cluster, is your copy of record. It can contain connection details, so `.gitignore` keeps it out of this folder's Git repository.
 
@@ -237,7 +240,7 @@ Restrict network access to port 7502 to known client networks, for example with 
 
 ## Updating the registry
 
-Edit `connxreg64.db` outside the cluster, then replace the ConfigMap and restart the pods:
+Edit `connxreg64.db` (or your CDD files) outside the cluster, then replace the ConfigMap and restart the pods. Use the same `--from-file` options as in step 2:
 
 ```bash
 kubectl create configmap connx-jdbc-registry -n connx --from-file=connxreg64.db \
@@ -272,7 +275,7 @@ To keep the change, also set `replicas` in `02-deployment.yaml`. Otherwise the n
 
 ## Upgrading
 
-1. Make the new image version available in your registry.
+1. Build and push the new image version (see [BUILD-IMAGE.txt](BUILD-IMAGE.txt)).
 2. Update `image:` in `02-deployment.yaml`.
 3. Apply and watch the rollout:
 
