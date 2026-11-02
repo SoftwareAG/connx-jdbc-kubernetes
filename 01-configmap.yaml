@@ -1,0 +1,26 @@
+######################################################################
+# CONNX JDBC Server - Container environment
+#
+# ACCEPT_EULA
+#   You must accept the Software AG license agreement for the server to
+#   start. If the value is not "Y", the container exits with code 10.
+#   Setting "Y" means you accept the license terms that apply to your
+#   CONNX entitlement.
+#
+# CONNXREGISTRY64
+#   Path of the CONNX registry (data source definitions and settings).
+#   The file comes from the "connx-jdbc-registry" ConfigMap, mounted
+#   read-only at /config (see 02-deployment.yaml and README.md).
+#   Do not change it unless you also change the volume mount path.
+######################################################################
+
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: connx-jdbc-config
+  namespace: connx
+  labels:
+    app: connx-jdbc
+data:
+  ACCEPT_EULA: "Y"                              # Required. See header above.
+  CONNXREGISTRY64: "/config/connxreg64.db"      # Registry from the connx-jdbc-registry ConfigMap

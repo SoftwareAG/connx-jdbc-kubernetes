@@ -1,0 +1,8 @@
+# CONNX registry and backups. Can contain connection details; keep them
+# in your configuration store, not in this repository.
+connxreg64.db
+connxreg64.db.*
+
+# Image archives supplied by Software AG
+*.tar
+*.tar.gz

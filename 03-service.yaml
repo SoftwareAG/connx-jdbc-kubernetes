@@ -1,0 +1,29 @@
+######################################################################
+# CONNX JDBC Server - Service
+#
+# In-cluster address:  connx-jdbc.<namespace>.svc.cluster.local:7502
+#
+# JDBC is a plain TCP protocol, so an OpenShift Route (HTTP/TLS-SNI)
+# cannot be used. For clients outside the cluster, change "type" to:
+#   LoadBalancer  - ROSA, ARO, OpenShift on a cloud provider, or
+#                   on-premises with the MetalLB Operator (recommended)
+#   NodePort      - on-premises clusters without a load balancer
+# See README.md, "Connecting clients".
+######################################################################
+
+apiVersion: v1
+kind: Service
+metadata:
+  name: connx-jdbc
+  namespace: connx
+  labels:
+    app: connx-jdbc
+spec:
+  type: ClusterIP                               # In-cluster only. Change for external clients.
+  selector:
+    app: connx-jdbc
+  ports:
+  - name: jdbc
+    port: 7502
+    targetPort: jdbc
+    protocol: TCP

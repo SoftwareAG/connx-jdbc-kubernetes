@@ -1,0 +1,96 @@
+######################################################################
+# CONNX JDBC Server - Deployment
+#
+# Runs the CONNX JDBC server (cnxjdbc64), listening on TCP 7502.
+#
+# Registry
+#   The CONNX registry (connxreg64.db) comes from the ConfigMap
+#   "connx-jdbc-registry" and is mounted read-only at /config. The pods
+#   never write to it. To change the registry, replace the ConfigMap and
+#   restart the pods (see README.md, "Updating the registry").
+#
+# Scaling
+#   The pods hold no state, so any number of replicas can run. Updates
+#   are rolling: a new pod must be ready before an old one is stopped.
+#
+# Security
+#   Runs as non-root, with all Linux capabilities dropped and no
+#   writable volumes.
+#   OpenShift: runs under the default "restricted-v2" SCC, which assigns
+#     a random UID. Leave runAsUser commented out.
+#   Other Kubernetes: the image user is "sagadmin" (non-numeric), which
+#     runAsNonRoot cannot verify. Uncomment runAsUser: 1724 below.
+#
+# >>> ACTION REQUIRED: set the image (see "image:" below) <<<
+######################################################################
+
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: connx-jdbc
+  namespace: connx
+  labels:
+    app: connx-jdbc
+spec:
+  replicas: 2                                   # Scale as needed. See "Scaling" above.
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1                               # Start one new pod at a time
+      maxUnavailable: 0                         # Never go below the replica count
+  selector:
+    matchLabels:
+      app: connx-jdbc
+  template:
+    metadata:
+      labels:
+        app: connx-jdbc
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        # runAsUser: 1724                       # Kubernetes other than OpenShift: uncomment
+        seccompProfile:
+          type: RuntimeDefault
+      # Uncomment if your registry needs credentials. Not needed for the
+      # OpenShift internal registry. See README.md, step 1, option B.
+      # imagePullSecrets:
+      # - name: connx-registry-pull
+      containers:
+      - name: connx-jdbc
+        # ------------------------------------------------------------------
+        # ACTION REQUIRED: replace with the image you pushed in README.md, step 1.
+        # Examples:
+        #   image-registry.openshift-image-registry.svc:5000/connx/connx-jdbc:14.9.25364
+        #   registry.example.com/softwareag/connx-jdbc:14.9.25364
+        # ------------------------------------------------------------------
+        image: <REGISTRY>/<REPOSITORY>/connx-jdbc:<TAG>
+        imagePullPolicy: IfNotPresent
+        envFrom:
+        - configMapRef:
+            name: connx-jdbc-config
+        ports:
+        - containerPort: 7502
+          name: jdbc
+          protocol: TCP
+        readinessProbe:                         # Rolling updates wait for this
+          tcpSocket:
+            port: jdbc
+          periodSeconds: 10
+        livenessProbe:
+          tcpSocket:
+            port: jdbc
+          initialDelaySeconds: 15
+          periodSeconds: 20
+        securityContext:
+          allowPrivilegeEscalation: false
+          capabilities:
+            drop:
+            - ALL
+        volumeMounts:
+        - name: registry
+          mountPath: /config
+          readOnly: true
+      volumes:
+      - name: registry
+        configMap:
+          name: connx-jdbc-registry

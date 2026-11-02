@@ -1,0 +1,19 @@
+######################################################################
+# CONNX JDBC Server - Namespace (OpenShift project)
+#
+# All CONNX resources are created in this namespace. A Namespace is used
+# (rather than "oc new-project") so that "kubectl apply -f ." creates
+# everything in one step on any Kubernetes platform. OpenShift shows it
+# as a normal project in the web console.
+#
+# To use a different name, replace "connx" in this file and in the
+# "namespace:" field of every other manifest in this folder.
+######################################################################
+
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: connx
+  annotations:
+    openshift.io/display-name: "CONNX JDBC Server"         # Used by OpenShift only
+    openshift.io/description: "CONNX JDBC server (cnxjdbc64)"
